@@ -31,8 +31,9 @@ HEADER = """##fileformat=VCFv4.2
 
 def row(pos, ident, size=100, chrom="chr1", alt="<DEL>", filt="PASS",
         cells=("0|1:4,7", ".|.:.,.")):
+    info = "SVTYPE=BND" if "[" in alt or "]" in alt else f"END={pos+size};SVTYPE=DEL;SVLEN=-{size}"
     return "\t".join(map(str, (chrom, pos, ident, "N", alt, 60, filt,
-        f"END={pos+size};SVTYPE=DEL;SVLEN=-{size}", "GT:AD", *cells)))+"\n"
+        info, "GT:AD", *cells)))+"\n"
 
 def write_vcf(directory, rows):
     path=Path(directory)/"input.vcf"
@@ -125,11 +126,7 @@ class StreamingTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError,"write failed"):
                 grouping(source,parameters(),fail)
 
-    def test_cli_records_genotypes_and_clusters(self):
-        rows=[row(10,"small",10),row(1000,"a"),row(1001,"b"),
-              row(2000,"large",100000,cells=("0/0:20,0","./.:.,.")),
-              row(3000,"missing",cells=(".|1:.,4","0:9,0")),
-              row(9000,"failed",filt="LowQual")]
+    def check_cli(self, rows):
         with tempfile.TemporaryDirectory() as tmp:
             source=write_vcf(tmp,rows)
             environment=os.environ.copy()
@@ -150,6 +147,19 @@ class StreamingTests(unittest.TestCase):
                 outputs.append((canonical(kept),canonical(members)))
             self.assertEqual(outputs[0],outputs[1])
             self.assertEqual(len(outputs[0][0])+len(outputs[0][1]),len(rows))
+
+    def test_cli_records_genotypes_and_clusters(self):
+        rows=[row(10,"small",10),row(1000,"a"),row(1001,"b"),
+              row(2000,"large",100000,cells=("0/0:20,0","./.:.,.")),
+              row(3000,"missing",cells=(".|1:.,4","0:9,0")),
+              row(9000,"failed",filt="LowQual")]
+        self.check_cli(rows)
+
+    def test_cli_all_excluded(self):
+        self.check_cli([row(10,"small",10),row(50,"large",100000)])
+
+    def test_cli_empty(self):
+        self.check_cli([])
 
 if __name__=="__main__":
     unittest.main(verbosity=2)
